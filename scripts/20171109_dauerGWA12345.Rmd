@@ -15,11 +15,15 @@ library(lme4)
 library(cegwas)
 library(genetics)
 
-load(file ="/Users/tim/Dropbox/AndersenLab/LabFolders/Tim/projects/Dauer_ascr5_protocol/data/dauerGWA1.RData")
-load(file ="/Users/tim/Dropbox/AndersenLab/LabFolders/Tim/projects/Dauer_ascr5_protocol/data/dauerGWA2.RData")
-load(file ="/Users/tim/Dropbox/AndersenLab/LabFolders/Tim/projects/Dauer_ascr5_protocol/data/dauerGWA3.RData")
-load(file ="/Users/tim/Dropbox/AndersenLab/LabFolders/Tim/projects/Dauer_ascr5_protocol/data/dauerGWA4.RData")
-load(file ="/Users/tim/Dropbox/AndersenLab/LabFolders/Tim/projects/Dauer_ascr5_protocol/data/dauerGWA5.RData")
+# set working directory
+setwd(glue::glue("{dirname(rstudioapi::getActiveDocumentContext()$path)}/.."))
+
+#load processed data
+load(file ="data/processed/dauerGWA1.RData")
+load(file ="data/processed/dauerGWA2.RData")
+load(file ="data/processed/dauerGWA3.RData")
+load(file ="data/processed/dauerGWA4.RData")
+load(file ="data/processed/dauerGWA5.RData")
 
 dauer_assay_GWA<- rbind(dauer_assay_GWA1_cleaned,dauer_assay_GWA2_cleaned,dauer_assay_GWA3_cleaned,dauer_assay_GWA4_cleaned,dauer_assay_GWA5_cleaned)
 
@@ -67,7 +71,6 @@ for (i in unique(processed_mapping_dauerGWA$trait)) {
   print(pxgplot)
 }
   
-
 #2. n>=12 pruned
 
 df_dauerGWA_pruned <- dauer_assay_GWA %>%
@@ -123,8 +126,6 @@ for (i in unique(processed_mapping_dauerGWA_pruned$trait)) {
   print(pxgplot_input)
   dauer_pxgplot[i] <- pxgplot_input
 }
-
-
 
 #3. assay regressed
 
