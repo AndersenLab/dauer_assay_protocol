@@ -6,7 +6,7 @@ setwd(glue::glue("{dirname(rstudioapi::getActiveDocumentContext()$path)}/.."))
 # Define a vector of your experiment directories. Can load more
 dirs <- c("data/raw/20220407_dauerProtocol1")
 
-# Read in the data
+# Read in the data using easysorter: https://github.com/AndersenLab/easysorter
 raw <- easysorter::read_data(dirs)
 
 # look at score data
