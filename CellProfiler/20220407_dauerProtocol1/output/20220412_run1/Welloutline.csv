@@ -1,0 +1,6 @@
+ImageNumber,ObjectNumber,Metadata_Assay,Metadata_Date,Metadata_FileLocation,Metadata_Frame,Metadata_Magnification,Metadata_Plate,Metadata_Series,Metadata_Well,Metadata_wavelength
+1,1,dauerProtocol1,20220407,nan,0,m2X,p002,0,A01,nan
+2,1,dauerProtocol1,20220407,nan,0,m2X,p002,0,A02,nan
+3,1,dauerProtocol1,20220407,nan,0,m2X,p002,0,A03,nan
+4,1,dauerProtocol1,20220407,nan,0,m2X,p002,0,A04,nan
+5,1,dauerProtocol1,20220407,nan,0,m2X,p002,0,A05,nan
