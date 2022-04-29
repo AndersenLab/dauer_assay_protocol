@@ -207,6 +207,26 @@ ggplot(y_merge_K4) +
   theme_bw() +
   ylim(0, 500) +
   xlim(0, 1000)
+
+#=====================================================#
+# Try MClust
+#=====================================================#
+# assign clusters our data
+clusters <- y %>%
+  mclust::Mclust(., G = 4)
+clusters <- y %>%
+  mclust::Mclust(., G = 4)
+
+plot(clusters)
+
+# add to dataframe and name according to mean values - cool. We can revisit
+raw <- score_proc_di %>%
+  dplyr::bind_cols(., as_tibble(clusters$classification)) #%>% #pulls the classification info
+  dplyr::group_by(value)
+
+# assign clusters to Daehans data with Mclust
+# ascr added
+
 #--------------------------------------------------------#
 # Daehan's EM clustering EXAMPLE WITH EMcluster
 #--------------------------------------------------------#
