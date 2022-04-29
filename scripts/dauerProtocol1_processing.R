@@ -10,7 +10,7 @@ setwd(glue::glue("{dirname(rstudioapi::getActiveDocumentContext()$path)}/.."))
 #easyXpress::tidyProject(project_dir = "/Volumes/ECA_Image/Tim/20220407_dauerProtocol1")
 
 # read in the CellProfiler output from the process_dauer.cpproj run
-now2 <- data.table::fread("~/repos/dauer_assay_protocol/CellProfiler/20220407_dauerProtocol1/output/20220414_run6/NonOverlappingWorms.csv")
+now2 <- data.table::fread("CellProfiler/20220407_dauerProtocol1/output/20220414_run6/NonOverlappingWorms.csv")
 
 # lets just plot the integrated RFP intensity / area for NonOverlappingWorms
 now_proc2 <- now2 %>%
