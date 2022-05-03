@@ -45,7 +45,7 @@ df_raw <- proc_dauersGWA %>%
   dplyr::filter(condition == "ascr5.800nM") %>%
   dplyr::filter(TOF>100)
 
-y <- df_raw[c("TOF", "green", "EXT")]
+y <- df_raw[c("TOF", "red", "EXT")]
 ret.em_K4 <- EMCluster::init.EM(y, nclass = 4, method = "em.EM")
 y_merge_K4 <- data.frame(df_raw, ret.em_K4[6])
 
@@ -56,15 +56,13 @@ ggplot(y_merge_K4) +
   theme(text = element_text(size=12),
         axis.text.x = element_text(angle=45, hjust=1)) +
   labs(title = "GWA3a 800nM ascr#5") +
-  theme_bw() +
-  ylim(0, 300) +
-  xlim(0, 600)
+  theme_bw() 
 
 # Caution!!! factor label changes everytime!!!
 # labels=c("crap1", "crap2", "non-dauer", "dauer")
 # labels=c("crap1", "dauer",  "crap2", "non-dauer")
 # labels=c("non-dauer", "crap1", "crap2", "dauer")
-y_merge_K4$class <- factor(y_merge_K4$class, levels=c(3,1,4,2), labels=c("dauer", "non-dauer", "other1", "other2"))
+y_merge_K4$class <- factor(y_merge_K4$class, levels=c(3,2,1,4), labels=c("dauer", "non-dauer", "other1", "other2"))
 
 # replot with new factor names
 gwa3_plot <- y_merge_K4 %>%
@@ -93,11 +91,11 @@ ours <- score_proc[c("TOF","green", "EXT")]
 ret.em_K4_ours <- EMCluster::assign.class(ours, ret.em_K4)
 y_merge_K4_ours <- data.frame(score_proc, ret.em_K4_ours[6])
 # CHANGES EVERY TIME!
-y_merge_K4_ours$class <- factor(y_merge_K4_ours$class, levels=c(3,1,4,2), labels=c("dauer", "non-dauer", "other1", "other2"))
+y_merge_K4_ours$class <- factor(y_merge_K4_ours$class, levels=c(1,2,3,4), labels=c("dauer", "non-dauer", "other1", "other2"))
 # plot to define classes
 dauer_assay3 <- ggplot(y_merge_K4_ours) +
   aes(x = TOF, y = green, scale = T, color = as.factor(class)) +
-  #scale_color_manual(values = ) # can use to set colors consistenetly
+  #scale_color_manual(values = ) # can use to set colors consistently
   geom_point(size=1, alpha = 0.3)+
   theme(text = element_text(size=12),
         axis.text.x = element_text(angle=45, hjust=1)) +
@@ -107,6 +105,20 @@ dauer_assay3 <- ggplot(y_merge_K4_ours) +
   ylim(0, 300) +
   xlim(0, 600)
 dauer_assay3
+
+z2 <- score_proc[c("TOF","red", "EXT")]
+
+# plot to define classes
+dauer_assay4 <- ggplot(score_proc) +
+  aes(x = TOF, y = red, scale = T) +
+  #scale_color_manual(values = ) # can use to set colors consistently
+  geom_point(size=1, alpha = 0.3)+
+  theme(text = element_text(size=12),
+        axis.text.x = element_text(angle=45, hjust=1)) +
+  labs(title = "dauer assay 3", color = "") +
+  facet_wrap(~condition) +
+  theme_bw() 
+dauer_assay4
 
 cowplot::ggsave2(dauer_assay3, filename = "plots/dauer_assay3_clusters_by_condition.png", width = 5, height = 5)
 
@@ -128,12 +140,12 @@ ours1 <- score_proc1[c("TOF","green", "EXT")]
 ret.em_K4_ours1 <- EMCluster::assign.class(ours1, ret.em_K4)
 y_merge_K4_ours1 <- data.frame(score_proc1, ret.em_K4_ours1[6])
 # CHANGES EVERY TIME!
-y_merge_K4_ours1$class <- factor(y_merge_K4_ours1$class, levels=c(3,1,4,2), labels=c("dauer", "non-dauer", "other1", "other2"))
+y_merge_K4_ours1$class <- factor(y_merge_K4_ours1$class, levels=c(1,2,3,4), labels=c("dauer", "non-dauer", "other1", "other2"))
 
 # plot to define classes
 dauer_assay3 <- ggplot(y_merge_K4_ours1) +
   aes(x = TOF, y = green, scale = T, color = as.factor(class)) +
-  #scale_color_manual(values = ) # can use to set colors consistenetly
+  #scale_color_manual(values = ) # can use to set colors consistently
   geom_point(size=1, alpha = 0.3)+
   theme(text = element_text(size=12),
         axis.text.x = element_text(angle=45, hjust=1)) +
