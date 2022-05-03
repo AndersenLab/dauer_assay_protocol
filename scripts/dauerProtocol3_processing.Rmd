@@ -12,6 +12,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r}
 library(tidyverse)
 library(EMCluster)
+library(forcats)
 
 # set working directory
 setwd(glue::glue("{dirname(rstudioapi::getActiveDocumentContext()$path)}/.."))
@@ -47,7 +48,7 @@ score_proc <- as.data.frame(raw[1]) %>%
 ```
 
 
-## Part 2: Use Daehan's Data to get dauer classes
+## Part 2: Use Daehan's Data to get dauer classes (from green channel)
 
 ```{r}
 raw_dauersGWA <- easysorter::read_data("data/raw/20170917_dauerGWA3A") # FOR NOW USE THIS ASSAY FOR SETTINGS
@@ -62,18 +63,20 @@ df_raw <- proc_dauersGWA %>%
   dplyr::filter(condition == "ascr5.800nM") %>%
   dplyr::filter(TOF>100)
 
-y <- df_raw[c("TOF", "green", "EXT")]
-ret.em_K4 <- EMCluster::init.EM(y, nclass = 4, method = "em.EM")
-y_merge_K4 <- data.frame(df_raw, ret.em_K4[6])
+D_green <- df_raw[c("TOF", "green", "EXT")]
+ret.em_K4 <- EMCluster::init.EM(D_green, nclass = 4, method = "em.EM")
+D_green_merge_K4 <- data.frame(df_raw, ret.em_K4[6])
 
 # plot to define classes
-ggplot(y_merge_K4) +
+ggplot(D_green_merge_K4) +
   aes(x = TOF, y = green, scale = T, color = as.factor(class)) +
   geom_point(size=1, alpha = 0.3)+
   theme(text = element_text(size=12),
         axis.text.x = element_text(angle=45, hjust=1)) +
   labs(title = "GWA3a 800nM ascr#5") +
-  theme_bw() 
+  theme_bw() + 
+  ylim(0, 300) +
+  xlim(0, 600)
 ```
 
 ```{r}
@@ -81,10 +84,10 @@ ggplot(y_merge_K4) +
 # labels=c("crap1", "crap2", "non-dauer", "dauer")
 # labels=c("crap1", "dauer",  "crap2", "non-dauer")
 # labels=c("non-dauer", "crap1", "crap2", "dauer")
-y_merge_K4$class <- factor(y_merge_K4$class, levels=c(3,2,1,4), labels=c("dauer", "non-dauer", "other1", "other2"))
+D_green_merge_K4$class <- factor(D_green_merge_K4$class, levels=c(1,4,2,3), labels=c("dauer", "non-dauer", "other1", "other2"))
 
 # replot with new factor names
-gwa3_plot <- y_merge_K4 %>%
+gwa3_plot_green_channel <- D_green_merge_K4 %>%
   dplyr::filter(!is.na(strain)) %>%
   #dplyr::filter(class %in% c("dauer", "non-dauer")) %>%
   ggplot(.) +
@@ -98,32 +101,32 @@ gwa3_plot <- y_merge_K4 %>%
   ylim(0, 300) +
   xlim(0, 600)
 
-gwa3_plot
+gwa3_plot_green_channel
 
-cowplot::ggsave2(gwa3_plot, filename = "plots/GWA3a_classes.png", width =5, height = 5)
+cowplot::ggsave2(gwa3_plot_green_channel, filename = "plots/GWA3a_classes_green_channel.png", width =5, height = 5)
 ```
 
 
-## Part 3: Try to apply those classes to our data
+## Part 3: Try to apply those (green) classes to our data
 
 ### Looking at green channel
 ```{r}
 # applying model from DI condition to all our data
-ours <- score_proc[c("TOF","green", "EXT")]
-ret.em_K4_ours <- EMCluster::assign.class(ours, ret.em_K4)
-y_merge_K4_ours <- data.frame(score_proc, ret.em_K4_ours[6])
+ours_g <- score_proc[c("TOF","green", "EXT")]
+ret.em_K4_ours_g <- EMCluster::assign.class(ours_g, ret.em_K4)
+y_merge_K4_ours_g <- data.frame(score_proc, ret.em_K4_ours_g[6])
 
-# CHANGES EVERY TIME!
-y_merge_K4_ours$class <- factor(y_merge_K4_ours$class, levels=c(1,2,3,4), labels=c("dauer", "non-dauer", "other1", "other2"))
+# CHANGES EVERY TIME! (same as defined above)
+y_merge_K4_ours_g$class <- factor(y_merge_K4_ours_g$class, levels=c(1,4,2,3), labels=c("dauer", "non-dauer", "other1", "other2"))
 
 # plot to define classes
-dauer_assay3_green <- ggplot(y_merge_K4_ours) +
+dauer_assay3_green <- ggplot(y_merge_K4_ours_g) +
   aes(x = TOF, y = green, scale = T, color = as.factor(class)) +
   #scale_color_manual(values = ) # can use to set colors consistently
   geom_point(size=1, alpha = 0.3)+
   theme(text = element_text(size=12),
         axis.text.x = element_text(angle=45, hjust=1)) +
-  labs(title = "dauer assay 3", color = "") +
+  labs(title = "Dauer Assay 3 Classes (Green Channel)", color = "") +
   facet_wrap(~condition) +
   theme_bw() +
   ylim(0, 300) +
@@ -133,63 +136,180 @@ dauer_assay3_green
 
 cowplot::ggsave2(dauer_assay3_green, filename = "plots/dauer_assay3_clusters_by_condition_green.png", width = 5, height = 5)
 ```
+Daehan's green channel classes doesn't seem to be very effective at predicting our dauer classes
 
-### Looking at red channel
+## Part 4: Use Daehan's Data to get dauer classes (from red channel)
+
 ```{r}
-z2 <- score_proc[c("TOF","red", "EXT")]
+D_red <- df_raw[c("TOF", "red", "EXT")]
+#using just two classes here as it tends to split the dauer class in half at the bottom with 3-4 classes
+ret.em_K4_2 <- EMCluster::init.EM(D_red, nclass = 3, method = "em.EM")
+D_red_merge_K4 <- data.frame(df_raw, ret.em_K4_2[6])
 
 # plot to define classes
-dauer_assay3_red <- ggplot(score_proc) +
-  aes(x = TOF, y = red, scale = T) +
+ggplot(D_red_merge_K4) +
+  aes(x = TOF, y = red, scale = T, color = as.factor(class)) +
+  geom_point(size=1, alpha = 0.3)+
+  theme(text = element_text(size=12),
+        axis.text.x = element_text(angle=45, hjust=1)) +
+  labs(title = "GWA3a 800nM ascr#5") +
+  theme_bw() 
+```
+```{r}
+# Caution!!! factor label changes everytime!!!
+# labels=c("crap1", "crap2", "non-dauer", "dauer")
+# labels=c("crap1", "dauer",  "crap2", "non-dauer")
+# labels=c("non-dauer", "crap1", "crap2", "dauer")
+D_red_merge_K4$class <- factor(D_red_merge_K4$class, levels=c(2,3,1), labels=c("dauer", "non-dauer", "other"))
+
+# replot with new factor names
+gwa3_plot_red <- D_red_merge_K4 %>%
+  dplyr::filter(!is.na(strain)) %>%
+  #dplyr::filter(class %in% c("dauer", "non-dauer")) %>%
+  ggplot(.) +
+  aes(x = TOF, y = red, scale = T, color = as.factor(class)) +
+  geom_point(size=1, alpha = 0.3) +
+  theme(text = element_text(size=12),
+        axis.text.x = element_text(angle=45, hjust=1)) +
+  facet_grid(~condition) +
+  labs(title = "GWA3a 800nM ascr#5", color = "") +
+  theme_bw() +
+ #ylim(0, 300) +
+  xlim(0, 600)
+
+gwa3_plot_red
+
+cowplot::ggsave2(gwa3_plot_red, filename = "plots/GWA3a_red_classes.png", width =5, height = 5)
+```
+
+## Part 5: Try to apply Daehan's (red) classes to our data 
+
+### Looking at our red channel
+```{r}
+# applying model from DI condition to all our data
+ours_r <- score_proc[c("TOF","red", "EXT")]
+ret.em_K4_ours_r <- EMCluster::assign.class(ours_r, ret.em_K4)
+y_merge_K4_ours_r <- data.frame(score_proc, ret.em_K4_ours_r[6])
+
+# CHANGES EVERY TIME! (same as defined above)
+y_merge_K4_ours_r$class <- factor(y_merge_K4_ours_r$class, levels=c(2,3,1), labels=c("dauer", "non-dauer", "other"))
+
+# plot to define classes
+dauer_assay3_red <- ggplot(y_merge_K4_ours_r) +
+  aes(x = TOF, y = green, scale = T, color = as.factor(class)) +
   #scale_color_manual(values = ) # can use to set colors consistently
   geom_point(size=1, alpha = 0.3)+
   theme(text = element_text(size=12),
         axis.text.x = element_text(angle=45, hjust=1)) +
-  labs(title = "dauer assay 3", color = "") +
+  labs(title = "Dauer Assay 3 Classes (Red Channel)", color = "") +
   facet_wrap(~condition) +
-  theme_bw() 
+  theme_bw() +
+  ylim(0, 300) +
+  xlim(0, 600)
 
 dauer_assay3_red
 
 cowplot::ggsave2(dauer_assay3_red, filename = "plots/dauer_assay3_clusters_by_condition_red.png", width = 5, height = 5)
 ```
 
-#====================================================================#
-# dauer assay Protocol3
-#====================================================================#
-# Define a vector of your experiment directories. Can load more
-dir1 <- c("data/raw/20220427_dauerProtocol3")
+Daehan's red channel classes also don't predict our dauers very well. Our clusters look completely different.  
+The green and red clustering in our data does look almost identical though. 
 
-# Read in the data using easysorter: https://github.com/AndersenLab/easysorter
-raw1 <- easysorter::read_data(dir1)
-# look at score data for each color channel
-score_proc1 <- as.data.frame(raw1[1]) %>%
-  dplyr::filter(call50 != "bubble", contamination != "TRUE", !is.na(strain)) %>%
+We should try training our data by taking our control (no ascr) condition and using it to establish non-dauer, and then using that to cluster the rest of the data. 
+
+## Part 6: Using our controls to train clustering of our data 
+
+### Getting classes from our own (green) data
+
+```{r}
+raw_dauers_ours <- easysorter::read_data("data/raw/20220427_dauerProtocol3") # FOR NOW USE THIS ASSAY FOR SETTINGS
+
+proc_dauers_ours <- as.data.frame(raw_dauers_ours[1]) %>%
   dplyr::mutate(well = paste(plate,row,col, sep = ""))
 
-# applying model from DI condition to all our data
-ours1 <- score_proc1[c("TOF","green", "EXT")]
-ret.em_K4_ours1 <- EMCluster::assign.class(ours1, ret.em_K4)
-y_merge_K4_ours1 <- data.frame(score_proc1, ret.em_K4_ours1[6])
-# CHANGES EVERY TIME!
-y_merge_K4_ours1$class <- factor(y_merge_K4_ours1$class, levels=c(1,2,3,4), labels=c("dauer", "non-dauer", "other1", "other2"))
+# EM clustering in DI condition
+df_raw_ours <- proc_dauers_ours %>%
+  dplyr::filter(!is.na(strain)) %>%
+  #dplyr::filter(strain %in% c("JU346", "ECA1089", "ECA1119", "ECA1121", "NIC166", "ECA1091", "ECA1120", "ECA1122")) %>%
+  dplyr::filter(condition %in% c("control_4hr", "20uM_ascr5_4hr", "10uM_ascr5_4hr"))
+  #dplyr::filter(TOF>100)
+
+ours_green <- df_raw_ours[c("TOF", "green", "EXT")]
+ret.em_K4_ours_g2 <- EMCluster::init.EM(ours_green, nclass = 6, method = "em.EM")
+ours_green2_merge_K4 <- data.frame(df_raw_ours, ret.em_K4_ours_g2[6])
 
 # plot to define classes
-dauer_assay3 <- ggplot(y_merge_K4_ours1) +
+ggplot(ours_green2_merge_K4) +
+  aes(x = TOF, y = green, scale = T, color = as.factor(class)) +
+  geom_point(size=1, alpha = 0.3)+
+  theme(text = element_text(size=12),
+        axis.text.x = element_text(angle=45, hjust=1)) +
+  labs(title = "Dauer Assay 3 20uM ascr5 + Control, 4hr (green)") +
+  theme_bw() + 
+  ylim(0, 300) +
+  xlim(0, 600)
+```
+
+```{r}
+# Caution!!! factor label changes everytime!!!
+# labels=c("crap1", "crap2", "non-dauer", "dauer")
+# labels=c("crap1", "dauer",  "crap2", "non-dauer")
+# labels=c("non-dauer", "crap1", "crap2", "dauer")
+ours_green2_merge_K4$class <- factor(ours_green2_merge_K4$class, levels=c(1,4,), labels=c("dauer1","dauer2", "non-dauer1", "non-dauer2", "other1", "other2"))
+
+ours_green2_merge_K4$class <- fct_collapse(ours_green2_merge_K4$class, dauer = c("dauer1","dauer2"), nondauer = c("non-dauer1", "non-dauer2"), other = c("other1","other2"))
+
+# replot with new factor names
+ours_plot_green <- ours_green2_merge_K4 %>%
+  dplyr::filter(!is.na(strain)) %>%
+  #dplyr::filter(class %in% c("dauer", "non-dauer")) %>%
+  ggplot(.) +
+  aes(x = TOF, y = green, scale = T, color = as.factor(class)) +
+  geom_point(size=1, alpha = 0.3) +
+  theme(text = element_text(size=12),
+        axis.text.x = element_text(angle=45, hjust=1)) +
+  facet_grid(~condition) +
+  labs(title = "GWA3a 800nM ascr#5", color = "") +
+  theme_bw() +
+ #ylim(0, 300) +
+  xlim(0, 600)
+
+ours_plot_green
+
+cowplot::ggsave2(ours_plot_green, filename = "plots/our_green_classes.png", width =5, height = 5)
+```
+
+### Using our classes (defined from our own data) to apply to the rest of our data
+
+```{r}
+# applying model from DI condition to all our data
+ours_g2 <- score_proc[c("TOF","green", "EXT")]
+ret.em_K4_ours_g2.1 <- EMCluster::assign.class(ours_g2, ret.em_K4_ours_g2) 
+y_merge_K4_ours_g2.1 <- data.frame(score_proc, ret.em_K4_ours_g2.1[6])
+
+# CHANGES EVERY TIME! (same as defined above)
+y_merge_K4_ours_g2.1$class <- factor(y_merge_K4_ours_g2$class, levels=c(1,3,2,5,4,6), labels=c("dauer1","dauer2", "non-dauer1", "non-dauer2", "other1", "other2"))
+
+y_merge_K4_ours_g2.1$class <- fct_collapse(y_merge_K4_ours_g2$class, dauer = c("dauer1","dauer2"), nondauer = c("non-dauer1", "non-dauer2"), other = c("other1","other2"))
+
+# plot to define classes
+dauer_assay3_green <- ggplot(y_merge_K4_ours_g2.1) +
   aes(x = TOF, y = green, scale = T, color = as.factor(class)) +
   #scale_color_manual(values = ) # can use to set colors consistently
   geom_point(size=1, alpha = 0.3)+
   theme(text = element_text(size=12),
         axis.text.x = element_text(angle=45, hjust=1)) +
-  labs(title = "dauer assay 3", color = "") +
-  facet_grid(~condition) +
+  labs(title = "Dauer Assay 3 Classes (Green Channel)", color = "") +
+  facet_wrap(~condition) +
   theme_bw() +
   ylim(0, 300) +
   xlim(0, 600)
-dauer_assay3
 
-cowplot::ggsave2(dauer_assay1, filename = "plots/dauer_assay1_clusters_by_condition.png", width = 5, height = 5)
-#cowplot::ggsave2(dauer_assay1, filename = "plots/dauer_assay1_clusters.png", width = 5, height = 5)
+dauer_assay3_green
+
+cowplot::ggsave2(dauer_assay3_red, filename = "plots/dauer_assay3_clusters_by_condition_green.png", width = 5, height = 5)
+```
+
 #===============================================================================#
 # make box plots
 #===============================================================================#
