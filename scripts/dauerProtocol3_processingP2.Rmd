@@ -35,7 +35,7 @@ score_proc <- as.data.frame(raw[1]) %>%
   dplyr::mutate(well = paste(plate,row,col, sep = ""))
 ```
 
-## Part 6: Using our controls to train clustering of our data 
+## Part 2: Using our controls to train clustering of our data 
 
 ### Getting classes from our own (green) data
 
