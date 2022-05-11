@@ -99,7 +99,7 @@ standard_plot_green
 cowplot::ggsave2(standard_plot_green, filename = "plots/standard_green_classes4.png", width =5, height = 5)
 ```
 
-### Using our classes (defined from our own data) to apply to the rest of our data
+### Using our classes (defined from our own data) to apply to the rest of our standard data
 
 ```{r fig.height=10}
 # applying model from DI condition to all our data
@@ -132,7 +132,7 @@ standard_dauer_assay4_green
 cowplot::ggsave2(standard_dauer_assay4_green, filename = "plots/standard_dauer_assay4_clusters_by_condition_green.png", width = 10, height = 10)
 ```
 
-## Part 3: process sorter data from 24hr assay
+## Part 3: process sorter data from 24hr delayed feeding assay
 
 ```{r}
 # Define a vector of your experiment directories. Can load more
@@ -148,7 +148,7 @@ score_proc2 <- as.data.frame(raw_24hr[1]) %>%
 ```
 
 
-## Part 4: using our controls to train clustering of our 24hr assay
+## Part 4: using our controls to train clustering of our 24hr delayed feeding assay
 
 ### Getting classes from our own (green) data
 
@@ -209,7 +209,7 @@ df_24hr_plot_green
 cowplot::ggsave2(df_24hr_plot_green, filename = "plots/df_24hr_green_classes4.png", width = 5, height = 5)
 ```
 
-### Using our classes (defined from our own data) to apply to the rest of our data
+### Using our classes (defined from our own data) to apply to the rest of our 24hr delayed feeding data
 
 ```{r fig.height=10}
 # applying model from DI condition to all our data
