@@ -198,6 +198,7 @@ df_24hr_plot_green <- df_24hr_green_merge_K4 %>%
   theme_bw() +
  #ylim(0, 300) +
   xlim(0, 600)
+ekfne;af;a 
 
 df_24hr_plot_green
 
