@@ -31,8 +31,19 @@ raw <- easysorter::read_data(dirs)
 
 # look at score data for each color channel
 score_proc <- as.data.frame(raw[1]) %>%
-  dplyr::filter(call50 != "bubble", contamination != "TRUE", !is.na(strain)) %>%
+  dplyr::filter(call50 != "bubble", contamination != "TRUE", !is.na(strain), TOF>100) %>%
   dplyr::mutate(well = paste(plate,row,col, sep = ""))
+
+#renaming categorical variables in our condition column
+score_proc$condition[score_proc$condition == "4hr_20uMascr"] <- "4hr 20 uM ascr#5"
+score_proc$condition[score_proc$condition == "4hr_10uMascr"] <- "4hr 10 uM ascr#5"
+score_proc$condition[score_proc$condition == "4hr_5uMascr"] <- "4hr 5 uM ascr#5"
+score_proc$condition[score_proc$condition == "4hr_control"] <- "4hr control"
+
+score_proc$condition[score_proc$condition == "20min_20uMascr"] <- "20min 20 uM ascr#5"
+score_proc$condition[score_proc$condition == "20min_10uMascr"] <- "20min 10 uM ascr#5"
+score_proc$condition[score_proc$condition == "20min_5uMascr"] <- "20min 5 uM ascr#5"
+score_proc$condition[score_proc$condition == "20min_control"] <- "20min control"
 ```
 
 ## Part 2: Using our controls to train clustering of our data 
@@ -40,20 +51,32 @@ score_proc <- as.data.frame(raw[1]) %>%
 ### Getting classes from our own (green) data
 
 ```{r}
-raw_dauers <- easysorter::read_data("data/raw/20220427_dauerProtocol3") # FOR NOW USE THIS ASSAY FOR SETTINGS
+raw_dauers <- easysorter::read_data("data/raw/20220427_dauerProtocol3") 
 
 proc_dauers <- as.data.frame(raw_dauers[1]) %>%
-  dplyr::mutate(well = paste(plate,row,col, sep = ""))
+  dplyr::mutate(well = paste(plate,row,col, sep = "")) 
+
+#renaming categorical variables in our condition column
+proc_dauers$condition[proc_dauers$condition == "4hr_20uMascr"] <- "4hr 20 uM ascr#5"
+proc_dauers$condition[proc_dauers$condition == "4hr_10uMascr"] <- "4hr 10 uM ascr#5"
+proc_dauers$condition[proc_dauers$condition == "4hr_5uMascr"] <- "4hr 5 uM ascr#5"
+proc_dauers$condition[proc_dauers$condition == "4hr_control"] <- "4hr control"
+
+proc_dauers$condition[proc_dauers$condition == "20min_20uMascr"] <- "20min 20 uM ascr#5"
+proc_dauers$condition[proc_dauers$condition == "20min_10uMascr"] <- "20min 10 uM ascr#5"
+proc_dauers$condition[proc_dauers$condition == "20min_5uMascr"] <- "20min 5 uM ascr#5"
+proc_dauers$condition[proc_dauers$condition == "20min_control"] <- "20min control"
+
 
 # EM clustering in DI condition
 df_raw <- proc_dauers %>%
   dplyr::filter(!is.na(strain)) %>%
   #dplyr::filter(strain %in% c("JU346", "ECA1089", "ECA1119", "ECA1121", "NIC166", "ECA1091", "ECA1120", "ECA1122")) %>%
-  dplyr::filter(condition %in% c("4hr_control", "4hr_20uMascr", "4hr_10uMascr"))
-  #dplyr::filter(TOF>100)
+  dplyr::filter(condition %in% c("4hr 5 uM ascr#5", "20min 5 uM ascr#5", "4hr 20 uM ascr#5", "20min 20 uM ascr#5")) %>%
+  dplyr::filter(TOF>100)
 
 df_green <- df_raw[c("TOF", "green", "EXT")]
-ret.em_K4_green <- EMCluster::init.EM(df_green, nclass = 5, method = "em.EM") #I'm choosing 5 classes here instead of Daehan's 4 because we see 2 clusters of non-dauers in our data (Daehan see's 1)
+ret.em_K4_green <- EMCluster::init.EM(df_green, nclass = 5, method = "em.EM") 
 green_merge_K4 <- data.frame(df_raw, ret.em_K4_green[6])
 
 # plot to define classes
@@ -63,7 +86,7 @@ ggplot(green_merge_K4) +
   geom_point(size=1, alpha = 0.3)+
   theme(text = element_text(size=12),
         axis.text.x = element_text(angle=45, hjust=1)) +
-  labs(title = "Dauer Assay 3 20uM + 10uM + 0uM ascr, 4hr (green)") +
+  labs(title = "Dauer Assay 3 20uM + 5 uM (green)") +
   theme_bw() + 
   ylim(0, 300) +
   xlim(0, 600)
@@ -71,9 +94,9 @@ ggplot(green_merge_K4) +
 
 ```{r}
 # Caution!!! factor label changes everytime!!!
-green_merge_K4$class <- factor(green_merge_K4$class, levels=c(5,3,2,4,1), labels=c("dauer", "dauer2", "non-dauer", "non-dauer2", "other"))
+green_merge_K4$class <- factor(green_merge_K4$class, levels=c(1,5,4,2,3), labels=c("dauer", "non-dauer1","non-dauer2", "other1", "other2"))
 
-green_merge_K4$class <- fct_collapse(green_merge_K4$class, dauer = c("dauer", "dauer2"), nondauer = c("non-dauer", "non-dauer2"), other = c("other1"))
+green_merge_K4$class <- fct_collapse(green_merge_K4$class, dauer = c("dauer", "other1"), nondauer = c("non-dauer1", "non-dauer2"), other = c("other2"))
 
 # replot with new factor names
 ours_plot_green <- green_merge_K4 %>%
@@ -92,37 +115,41 @@ ours_plot_green <- green_merge_K4 %>%
 
 ours_plot_green
 
-cowplot::ggsave2(ours_plot_green, filename = "plots/our_green_classes.png", width =5, height = 5)
+cowplot::ggsave2(ours_plot_green, filename = "plots/dauerAssay3/our_green_classes.png", width =5, height = 5)
 ```
 
 ### Using our classes (defined from our own data) to apply to the rest of our data
 
-```{r}
+```{r, fig.height=15}
 # applying model from DI condition to all our data
-ours_g <- score_proc[c("TOF","green", "EXT")]
-ret.em_K4_ours_g2 <- EMCluster::assign.class(ours_g, ret.em_K4_green) 
-y_merge_K4_ours_g2 <- data.frame(score_proc, ret.em_K4_ours_g2[6])
+ours_g <- score_proc[c("TOF","green", "EXT")] %>%
+  dplyr::filter(TOF>100)
+ret.em_K4_ours_g <- EMCluster::assign.class(ours_g, ret.em_K4_green) 
+y_merge_K4_ours_g <- data.frame(score_proc, ret.em_K4_ours_g[6])
 
 # CHANGES EVERY TIME! (same as defined above)
-y_merge_K4_ours_g2$class <- factor(y_merge_K4_ours_g2$class, levels=c(1,4,2,3,5,6), labels=c("dauer1","dauer2", "non-dauer1", "non-dauer2", "other1", "other2"))
+y_merge_K4_ours_g$class <- factor(y_merge_K4_ours_g$class, levels=c(1,5,4,2,3), labels=c("dauer", "non-dauer1","non-dauer2", "other1", "other2"))
 
-y_merge_K4_ours_g2$class <- fct_collapse(y_merge_K4_ours_g2$class, dauer = c("dauer1","dauer2"), nondauer = c("non-dauer1", "non-dauer2"), other = c("other1","other2"))
+y_merge_K4_ours_g$class <- fct_collapse(y_merge_K4_ours_g$class, dauer = c("dauer", "other1"), nondauer = c("non-dauer1", "non-dauer2"), other = c("other2"))
+
+#ordering our categorical variables 
+y_merge_K4_ours_g$condition <- factor(y_merge_K4_ours_g$condition, levels = c("20min control","4hr control", "20min 5 uM ascr#5", "4hr 5 uM ascr#5", "20min 10 uM ascr#5", "4hr 10 uM ascr#5", "20min 20 uM ascr#5", "4hr 20 uM ascr#5"), ordered=TRUE)
 
 # plot to define classes
-dauer_assay3_green <- ggplot(y_merge_K4_ours_g2) +
+dauer_assay3_green <- ggplot(y_merge_K4_ours_g) +
   aes(x = TOF, y = green, scale = T, color = as.factor(class)) +
   #scale_color_manual(values = ) # can use to set colors consistently
   geom_point(size=1, alpha = 0.3)+
   theme(text = element_text(size=12),
         axis.text.x = element_text(angle=45, hjust=1)) +
   labs(title = "Dauer Assay 3 Classes (Green Channel)", color = "") +
-  facet_wrap(~condition) +
+  facet_wrap(~condition, ncol = 2) +
   theme_bw() +
   ylim(0, 300) +
   xlim(0, 600)
 
 dauer_assay3_green
 
-cowplot::ggsave2(dauer_assay3_green, filename = "plots/dauer_assay3_clusters_by_condition_green.png", width = 5, height = 5)
+cowplot::ggsave2(dauer_assay3_green, filename = "plots/dauerAssay3/dauer_assay3_clusters_by_condition_green.png", width = 10, height = 10)
 ```
 
