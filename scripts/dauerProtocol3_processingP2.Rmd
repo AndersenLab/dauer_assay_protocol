@@ -46,7 +46,7 @@ score_proc$condition[score_proc$condition == "20min_5uMascr"] <- "20min 5 uM asc
 score_proc$condition[score_proc$condition == "20min_control"] <- "20min control"
 ```
 
-## Part 2: Using our controls to train clustering of our data 
+## Part 2: Using our controls to define clustering of our data 
 
 ### Getting classes from our own (green) data
 
@@ -118,7 +118,7 @@ ours_plot_green
 cowplot::ggsave2(ours_plot_green, filename = "plots/dauerAssay3/our_green_classes.png", width =5, height = 5)
 ```
 
-### Using our classes (defined from our own data) to apply to the rest of our data
+### Part 3: Using our classes (defined from our own data) to apply to the rest of our data
 
 ```{r, fig.height=15}
 # applying model from DI condition to all our data
@@ -153,3 +153,49 @@ dauer_assay3_green
 cowplot::ggsave2(dauer_assay3_green, filename = "plots/dauerAssay3/dauer_assay3_clusters_by_condition_green.png", width = 10, height = 10)
 ```
 
+## Part 4: Quantifying dauers 
+
+### Calculating the dauer fraction
+```{r}
+da1_sum <- y_merge_K4_ours_g %>%
+  dplyr::group_by(well) %>%
+  dplyr::mutate(well_tot_n = n(),
+                well_dauer_n = sum(class == "dauer"),
+                well_nondauer_n = sum(class == "nondauer"),
+                well_other_n = sum(class == "other"),
+                dauerFrac1 = well_dauer_n/(well_nondauer_n + well_dauer_n),
+                dauerFrac2 = well_dauer_n/(well_other_n + well_dauer_n))
+```
+
+### Graphing
+```{r, fig.height=15}
+# box plots
+bp1 <- ggplot(da1_sum %>% dplyr::distinct(well, .keep_all = T)) +
+  aes(x = strain, 
+      y = dauerFrac2, fill=strain,
+      labs=strain) +
+  ylim(0, 1)+
+  geom_point(aes(fill=condition), position=position_jitterdodge(), alpha = .7) +
+  geom_boxplot(outlier.alpha = 0, alpha = 0.7) +
+  theme_bw() + 
+  facet_wrap(~condition, ncol = 2) +
+  labs(y = "dauer fraction (d/(d+other))", title = "Dauer Assay 3") +
+  theme(legend.position = "none")
+bp1
+
+bp1b <- ggplot(da1_sum %>% dplyr::distinct(well, .keep_all = T)) +
+  aes(x = strain, 
+      y = dauerFrac1, fill=strain,
+      labs=strain) +
+  ylim(0, 1)+
+  geom_point(aes(fill=condition), position=position_jitterdodge(), alpha = .7) +
+  geom_boxplot(outlier.alpha = 0, alpha = 0.7) +
+  theme_bw() + 
+  facet_wrap(~condition, ncol = 2) +
+  labs(y = "dauer fraction (d/(d+nond))", title = "Dauer Assay 3") +
+  theme(legend.position = "none")
+bp1b
+
+cowplot::ggsave2(bp1, filename = "plots/dauerAssay3/assay3_dauerF_boxplot1.png", width = 5, height = 10)
+cowplot::ggsave2(bp1b, filename = "plots/dauerAssay3/assay3_dauerF_boxplot2.png", width = 5, height = 10)
+```
