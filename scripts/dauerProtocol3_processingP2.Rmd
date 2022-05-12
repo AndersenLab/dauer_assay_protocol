@@ -157,6 +157,7 @@ cowplot::ggsave2(dauer_assay3_green, filename = "plots/dauerAssay3/dauer_assay3_
 
 ### Calculating the dauer fraction
 ```{r}
+#calculating the dauer fraction in each well
 da1_sum <- y_merge_K4_ours_g %>%
   dplyr::group_by(well) %>%
   dplyr::mutate(well_tot_n = n(),
@@ -165,7 +166,11 @@ da1_sum <- y_merge_K4_ours_g %>%
                 well_other_n = sum(class == "other"),
                 dauerFrac1 = well_dauer_n/(well_nondauer_n + well_dauer_n),
                 dauerFrac2 = well_dauer_n/(well_other_n + well_dauer_n))
+
+#calculating the average amount of worms in each well (should be ~50)
+mean(da1_sum$well_tot_n)
 ```
+The average worm/well in this assay was ~32. This is low, but I think our pipetting improved after this. 
 
 ### Graphing
 ```{r, fig.height=15}
