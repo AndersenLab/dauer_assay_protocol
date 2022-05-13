@@ -45,12 +45,14 @@ flag_rm <- edge_flagged %>%
   dplyr::filter(cluster_flag != T) %>%
   dplyr::mutate(model_select = ifelse(model_select == "dauerMod_NonOverlappingWorms.model.outputs", "dauer", "non-dauer")) # fix long model name
 
-# caluclate dauer classification traits
+# calculate dauer classification traits
 dauer_df <- flag_rm %>%
   dplyr::mutate(sd_int_gut = ifelse(model_select == "dauer", Worm_StdIntensity_dauerMod_StraightenedImage_T1of1_L2of3, Worm_StdIntensity_nondauerMod_StraightenedImage_T1of1_L2of3),
                 mean_int_gut = ifelse(model_select == "dauer", Worm_MeanIntensity_dauerMod_StraightenedImage_T1of1_L2of3, Worm_MeanIntensity_nondauerMod_StraightenedImage_T1of1_L2of3),
                 cv_int_gut = sd_int_gut/mean_int_gut,
-                log_cv_int_geut = log(cv_int_gut),
+                log_cv_int_gut = log(cv_int_gut),
+                intInt_worm = Intensity_IntegratedIntensity_MaskedRFP,
+                intInt_upperq_worm = Intensity_UpperQuartileIntensity_MaskedRFP,
                 length_um = Worm_Length * 3.2937,
                 length = Worm_Length,
                 width_um = 2 * AreaShape_MaximumRadius * 3.2937,
@@ -61,92 +63,119 @@ dauer_df <- flag_rm %>%
                 y = AreaShape_Center_Y) %>%
   dplyr::select(model, Metadata_Plate:FileName_RawRFP, strain:y)
 
-#===========================================+#
-# WORKING HERE
-#=============================================#
-# summarize
-proc_df <- flag_rm %>%
-  dplyr::group_by(Metadata_Plate, Metadata_Well) %>%
-  dplyr::mutate(median_legnth = median(Worm_Length)) %>%
-  dplyr::distinct(Metadata_Plate, Metadata_Well, .keep_all = T)
+# look at the effect of dose on worm characteristics - multivariate multiple regression: https://data.library.virginia.edu/getting-started-with-multivariate-multiple-regression/
+m1 <- stats::lm(cbind(length_um, width_um, area_um) ~ ascr5_um + bead_time_min, data = dauer_df)
+summary(m1)
+car::Anova(m1)
+lh.1.out <- car::linearHypothesis(m1, hypothesis.matrix = c("bead_time_min = 0"))
+lh.1.out
+# results suggest bead_time_min do not improve the model fit for size metrics
+
+# test with intensity metrics
+m2 <- stats::lm(cbind(log_cv_int_gut, cv_int_gut, intInt_upperq_worm, intInt_worm) ~ ascr5_um + bead_time_min, data = dauer_df)
+summary(m2)
+car::Anova(m2)
+lh.2.out <- car::linearHypothesis(m2, hypothesis.matrix = c("ascr5_um = 0"))
+lh.2.out
+# both the bead time and the ascr concentration influence intensity metrics. Good, beads only influence intensity not size!
+
+#==================================================#
+# call dauers with a classifier
+#==================================================#
+# try using caret package short for Classification And REgression Training - http://topepo.github.io/caret/index.html 
+# need to make a truth set - Use imageJ 
 
 
-# lets just plot the integrated RFP intensity / area for NonOverlappingWorms
-now_proc2 <- now2 %>%
-  dplyr::select(assay = Metadata_Assay, date = Metadata_Date, plate = Metadata_Plate,
-                well = Metadata_Well, Parent_WormObjects, ObjectNumber, now_area = AreaShape_Area, 
-                AreaShape_Center_X, AreaShape_Center_Y, now_length = Worm_Length,
-                ii_RFP = Intensity_IntegratedIntensity_MaskedRFP,
-                Intensity_MaxIntensity_MaskedRFP,
-                Intensity_MeanIntensity_MaskedRFP,
-                Intensity_MedianIntensity_MaskedRFP,
-                Intensity_StdIntensity_MaskedRFP,
-                Intensity_MaxIntensity_MaskedRFP,
-                sd_int2 = Worm_StdIntensity_StraightenedImage_T1of1_L2of3,
-                mean_int2 = Worm_MeanIntensity_StraightenedImage_T1of1_L2of3) %>%
-  dplyr::mutate(rescale_ii_RFP = ii_RFP * 65536,
-                cv_int = Intensity_StdIntensity_MaskedRFP/Intensity_MeanIntensity_MaskedRFP,
-                log_cv_int = log(cv_int),
-                cv_int2 = sd_int2/mean_int2,
-                log_cv_int2 = log(cv_int2))
 
-# plot all the intensity traits - we could do PCA to find feeding worms?
-# corrlation of eigen values with env parameters
-trait_cor <- round(cor(dplyr::select_if(now_proc2, is.double), use = "complete.obs", method = "pearson"), 4)
-trait_heatmap <- ggplotify::as.ggplot(pheatmap::pheatmap(trait_cor,
-                                                         cutree_rows = NA,
-                                                         cutree_cols = NA,
-                                                         display_numbers = trait_cor))
-trait_heatmap
 
-cowplot::ggsave2(trait_heatmap, filename = "plots/all_measures_cor_heatmap.png", width = 12.5, height = 12.5)
 
-# make a distribution for each trait
-hist_df <- now_proc2 %>%
-  tidyr::pivot_longer(cols = names(dplyr::select_if(now_proc2, is.double)))
 
-# plot the histograms
-all_trait_hist <- ggplot(hist_df) +
-  geom_histogram(aes(x = value), bins = 100) +
-  facet_wrap(~name, scales = "free", ncol = 4) +
-  theme_bw()
-all_trait_hist
 
-log_cv_int_hist <- ggplot(hist_df %>% dplyr::filter(name == "log_cv_int" | name == "log_cv_int2")) +
-  geom_histogram(aes(x = value), bins = 100) +
-  theme_bw() +
-  geom_vline(xintercept = -2.9, linetype = "dashed", color = "red") +
-  facet_wrap(~name, scales = "free", ncol = 4)
-log_cv_int_hist
 
-cowplot::ggsave2(all_trait_hist, filename = "plots/all_measures_histogram.png", width = 7.5, height = 7.5)
-cowplot::ggsave2(log_cv_int_hist, filename = "plots/log_cv_int_measures_histogram.png", width = 7.5, height = 7.5)
 
-#===================================================================================#
-# Try polarizing to feeding vs not feeding with log_cv_int
-#===================================================================================#
-now_proc3 <- now_proc2 %>%
-  dplyr::mutate(fed = ifelse(log_cv_int2 > -2.9, T, F)) # could impirically find this line with azide treated then bead incubated worms?
 
-# Read the rescaled RFP PNG
-img <- png::readPNG(glue::glue("{getwd()}/CellProfiler/20220407_dauerProtocol1/output/20220414_run6/20220407-dauerProtocol1-p002-m2X_A01_w2_NonOverlappingWorms_RFP_mask.png"))
-img2 <- png::readPNG(glue::glue("{getwd()}/CellProfiler/20220407_dauerProtocol1/output/20220414_run6/20220407-dauerProtocol1-p002-m2X_A01_w1_overlay.png"))
-img3 <- png::readPNG(glue::glue("{getwd()}/CellProfiler/20220407_dauerProtocol1/output/20220414_run6/20220407-dauerProtocol1-p002-m2X_G07_w2_NonOverlappingWorms_RFP_mask.png"))
-img4 <- png::readPNG(glue::glue("{getwd()}/CellProfiler/20220407_dauerProtocol1/output/20220414_run6/20220407-dauerProtocol1-p002-m2X_G07_w1_overlay.png"))
-
-h<-dim(img)[1] # image height
-w<-dim(img)[2] # image width
-
-#plot rescaled RFP PNG with intensity traits from CP
-well_img <- now_proc3 %>% dplyr::filter(well == "A01") %>%
-  ggplot2::ggplot(.) +
-  ggplot2::aes(x = AreaShape_Center_X, y = AreaShape_Center_Y, fill = log_cv_int2, shape = fed) +
-  ggplot2::annotation_custom(grid::rasterGrob(img, width=ggplot2::unit(1,"npc"), height=ggplot2::unit(1,"npc")), 0, w, 0, -h) +
-  ggplot2::scale_fill_viridis_c() +
-  ggplot2::scale_shape_manual(values = c(21,24)) +
-  ggplot2::geom_point(alpha = 0.75, size=4) +
-  ggplot2::scale_x_continuous(expand=c(0,0),limits=c(0,w)) +
-  ggplot2::scale_y_reverse(expand=c(0,0),limits=c(h,0)) +
-  ggplot2::coord_equal() +
-  ggplot2::theme_bw()
-well_img
+# # summarize
+# proc_df <- flag_rm %>%
+#   dplyr::group_by(Metadata_Plate, Metadata_Well) %>%
+#   dplyr::mutate(median_legnth = median(Worm_Length)) %>%
+#   dplyr::distinct(Metadata_Plate, Metadata_Well, .keep_all = T)
+# 
+# # lets just plot the integrated RFP intensity / area for NonOverlappingWorms
+# now_proc2 <- now2 %>%
+#   dplyr::select(assay = Metadata_Assay, date = Metadata_Date, plate = Metadata_Plate,
+#                 well = Metadata_Well, Parent_WormObjects, ObjectNumber, now_area = AreaShape_Area, 
+#                 AreaShape_Center_X, AreaShape_Center_Y, now_length = Worm_Length,
+#                 ii_RFP = Intensity_IntegratedIntensity_MaskedRFP,
+#                 Intensity_MaxIntensity_MaskedRFP,
+#                 Intensity_MeanIntensity_MaskedRFP,
+#                 Intensity_MedianIntensity_MaskedRFP,
+#                 Intensity_StdIntensity_MaskedRFP,
+#                 Intensity_MaxIntensity_MaskedRFP,
+#                 sd_int2 = Worm_StdIntensity_StraightenedImage_T1of1_L2of3,
+#                 mean_int2 = Worm_MeanIntensity_StraightenedImage_T1of1_L2of3) %>%
+#   dplyr::mutate(rescale_ii_RFP = ii_RFP * 65536,
+#                 cv_int = Intensity_StdIntensity_MaskedRFP/Intensity_MeanIntensity_MaskedRFP,
+#                 log_cv_int = log(cv_int),
+#                 cv_int2 = sd_int2/mean_int2,
+#                 log_cv_int2 = log(cv_int2))
+# 
+# # plot all the intensity traits - we could do PCA to find feeding worms?
+# # corrlation of eigen values with env parameters
+# trait_cor <- round(cor(dplyr::select_if(now_proc2, is.double), use = "complete.obs", method = "pearson"), 4)
+# trait_heatmap <- ggplotify::as.ggplot(pheatmap::pheatmap(trait_cor,
+#                                                          cutree_rows = NA,
+#                                                          cutree_cols = NA,
+#                                                          display_numbers = trait_cor))
+# trait_heatmap
+# 
+# cowplot::ggsave2(trait_heatmap, filename = "plots/all_measures_cor_heatmap.png", width = 12.5, height = 12.5)
+# 
+# # make a distribution for each trait
+# hist_df <- now_proc2 %>%
+#   tidyr::pivot_longer(cols = names(dplyr::select_if(now_proc2, is.double)))
+# 
+# # plot the histograms
+# all_trait_hist <- ggplot(hist_df) +
+#   geom_histogram(aes(x = value), bins = 100) +
+#   facet_wrap(~name, scales = "free", ncol = 4) +
+#   theme_bw()
+# all_trait_hist
+# 
+# log_cv_int_hist <- ggplot(hist_df %>% dplyr::filter(name == "log_cv_int" | name == "log_cv_int2")) +
+#   geom_histogram(aes(x = value), bins = 100) +
+#   theme_bw() +
+#   geom_vline(xintercept = -2.9, linetype = "dashed", color = "red") +
+#   facet_wrap(~name, scales = "free", ncol = 4)
+# log_cv_int_hist
+# 
+# cowplot::ggsave2(all_trait_hist, filename = "plots/all_measures_histogram.png", width = 7.5, height = 7.5)
+# cowplot::ggsave2(log_cv_int_hist, filename = "plots/log_cv_int_measures_histogram.png", width = 7.5, height = 7.5)
+# 
+# #===================================================================================#
+# # Try polarizing to feeding vs not feeding with log_cv_int
+# #===================================================================================#
+# now_proc3 <- now_proc2 %>%
+#   dplyr::mutate(fed = ifelse(log_cv_int2 > -2.9, T, F)) # could impirically find this line with azide treated then bead incubated worms?
+# 
+# # Read the rescaled RFP PNG
+# img <- png::readPNG(glue::glue("{getwd()}/CellProfiler/20220407_dauerProtocol1/output/20220414_run6/20220407-dauerProtocol1-p002-m2X_A01_w2_NonOverlappingWorms_RFP_mask.png"))
+# img2 <- png::readPNG(glue::glue("{getwd()}/CellProfiler/20220407_dauerProtocol1/output/20220414_run6/20220407-dauerProtocol1-p002-m2X_A01_w1_overlay.png"))
+# img3 <- png::readPNG(glue::glue("{getwd()}/CellProfiler/20220407_dauerProtocol1/output/20220414_run6/20220407-dauerProtocol1-p002-m2X_G07_w2_NonOverlappingWorms_RFP_mask.png"))
+# img4 <- png::readPNG(glue::glue("{getwd()}/CellProfiler/20220407_dauerProtocol1/output/20220414_run6/20220407-dauerProtocol1-p002-m2X_G07_w1_overlay.png"))
+# 
+# h<-dim(img)[1] # image height
+# w<-dim(img)[2] # image width
+# 
+# #plot rescaled RFP PNG with intensity traits from CP
+# well_img <- now_proc3 %>% dplyr::filter(well == "A01") %>%
+#   ggplot2::ggplot(.) +
+#   ggplot2::aes(x = AreaShape_Center_X, y = AreaShape_Center_Y, fill = log_cv_int2, shape = fed) +
+#   ggplot2::annotation_custom(grid::rasterGrob(img, width=ggplot2::unit(1,"npc"), height=ggplot2::unit(1,"npc")), 0, w, 0, -h) +
+#   ggplot2::scale_fill_viridis_c() +
+#   ggplot2::scale_shape_manual(values = c(21,24)) +
+#   ggplot2::geom_point(alpha = 0.75, size=4) +
+#   ggplot2::scale_x_continuous(expand=c(0,0),limits=c(0,w)) +
+#   ggplot2::scale_y_reverse(expand=c(0,0),limits=c(h,0)) +
+#   ggplot2::coord_equal() +
+#   ggplot2::theme_bw()
+# well_img
