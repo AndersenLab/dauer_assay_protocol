@@ -42,7 +42,7 @@ edge_flagged <- easyXpress::edgeFlag(df_full)
 
 # remove cluster flags
 flag_rm <- edge_flagged %>%
-  dplyr::filter(cluster_flag != T) %>%
+  dplyr::filter(cluster_flag != T & well_edge_flag != T) %>%
   dplyr::mutate(model_select = ifelse(model_select == "dauerMod_NonOverlappingWorms.model.outputs", "dauer", "non-dauer")) # fix long model name
 
 # calculate dauer classification traits
@@ -61,7 +61,14 @@ dauer_df <- flag_rm %>%
                 area_um = AreaShape_Area * 3.2937,
                 x = AreaShape_Center_X,
                 y = AreaShape_Center_Y) %>%
-  dplyr::select(model, Metadata_Plate:FileName_RawRFP, strain:y)
+  dplyr::select(model, Metadata_Plate:FileName_RawRFP, strain:y) %>%
+  dplyr::mutate(plate = Metadata_Plate,
+                well = Metadata_Well,
+                row = stringr::str_extract(Metadata_Well, pattern = "[A-Z]"),
+                col = as.numeric(stringr::str_extract(Metadata_Well, pattern = "[0-9][0-9]"))) %>%
+  dplyr::group_by(plate, well) %>%
+  dplyr::arrange(y, x) %>%
+  dplyr::mutate(w_id = row_number())
 
 # look at the effect of dose on worm characteristics - multivariate multiple regression: https://data.library.virginia.edu/getting-started-with-multivariate-multiple-regression/
 m1 <- stats::lm(cbind(length_um, width_um, area_um) ~ ascr5_um + bead_time_min, data = dauer_df)
@@ -85,97 +92,168 @@ lh.2.out
 # try using caret package short for Classification And REgression Training - http://topepo.github.io/caret/index.html 
 # need to make a truth set - Use imageJ 
 
+#==================================================#
+# Make overlays for imageJ
+#==================================================#
+# set wells to make overlays for
+wells <- dauer_df %>%
+  dplyr::filter(col > 6, row %in% c("E", "F", "G", "H")) %>%
+  dplyr::distinct(well) %>%
+  dplyr::pull(well)
 
+# make a function to plot worm ids and the centroid so I can use them in imageJ
+d_overlay <- function(data, wells, well_radius = 825){
+  data <- data 
+  for(i in unique(wells)) {
+    img <- png::readPNG(glue::glue("CellProfiler/20220427_dauerProtocol3/output/Analysis-20220505/20220427-dauerProtocol3-p001-m2X_{i}_w1_overlay.png"))
+    #img <- png::readPNG(glue::glue("CellProfiler/20220427_dauerProtocol3/output/Analysis-20220505/20220427-dauerProtocol3-p001-m2X_E07_w1_overlay.png"))
+    
+    h <- dim(img)[1] # image height
+    w <- dim(img)[2] # image width
+    well_radius = well_radius
+    
+    # make the plot for a well
+    well_img <- data %>% dplyr::filter(well == i) %>%
+      ggplot2::ggplot(.) +
+      ggplot2::aes(x = x, y = y, label = as.character(w_id)) +
+      ggplot2::annotation_custom(grid::rasterGrob(img, width=ggplot2::unit(1,"npc"), height=ggplot2::unit(1,"npc")), 0, w, 0, -h) +
+      ggplot2::scale_fill_viridis_c() +
+      ggplot2::geom_text(size = 2, nudge_y = 15) +
+      ggplot2::geom_point(shape = 21, size = 1, alpha = 0.5, aes(color = model_select)) +
+      ggplot2::annotate("path", x = w/2 + well_radius * cos(seq(0, 2 * pi, length.out = 100)),
+                        y = h/2 + well_radius * sin(seq(0, 2 * pi, length.out = 100)),
+                        color = "red", 
+                        alpha = 0.25) +
+      ggplot2::scale_x_continuous(expand=c(0,0),limits=c(0,w)) +
+      ggplot2::scale_y_reverse(expand=c(0,0),limits=c(h,0)) +
+      ggplot2::coord_equal() +
+      ggplot2::theme_void() +
+      ggplot2::theme(legend.position = "none")
+    
+    # save the plot
+    cowplot::ggsave2(well_img, filename = glue::glue("CellProfiler/20220427_dauerProtocol3/output/Analysis-20220505/imageJ_overlays/20220427-dauerProtocol3-p001-m2X_{i}.png"),
+                     dpi = 300, width = 6.827, height = 6.827) # set to 2048 pixels
+  }
+}
 
+# use it
+d_overlay(data = dauer_df, wells = wells)
 
+#==============================================#
+# Test joining of truth set from imageJ
+#==============================================#
+# join the truth set - i'm seeing nearly 100% dauers in high dose
+truth_join <- data.table::fread("CellProfiler/20220427_dauerProtocol3/dauerProtocol3_20220514_dauer_truthset.csv") %>%
+  dplyr::rename(xt = x, yt = y, w_id = worm_id) %>%
+  dplyr::left_join(., dauer_df) %>%
+  dplyr::mutate(x_diff = xt-x,
+                y_diff = yt-y,
+                abs_diff = case_when(sign(x_diff) == 1 & sign(y_diff) == 1 ~ x_diff + y_diff,
+                                     sign(x_diff) == 1 & sign(y_diff) == -1 ~ (x_diff + (-1*y_diff)),
+                                     sign(x_diff) == -1 & sign(y_diff) == 1 ~ -1*x_diff + y_diff,
+                                     sign(x_diff) == -1 & sign(y_diff) == -1 ~ -1*x_diff + -1*y_diff,
+                                     TRUE ~ NA_real_))
 
+# the positions look good for the truth set - I think they are joined properly
+ggplot(truth_join) +
+  geom_histogram(aes(x = abs_diff))
 
+#=======================================#
+# setup the classifier
+#=======================================#
+# explore histograms for dauer and non-dauer in truth set
+hist_df <- truth_join %>%
+  tidyr::pivot_longer(cols = names(dplyr::select(truth_join, sd_int_gut:area_um)))
 
+# plot the histograms
+all_trait_hist <- ggplot(hist_df %>% dplyr::filter(truth_class != "prune" & !(name %in% c("area", "length", "width")))) +
+  geom_histogram(aes(x = value, y = stat(density), fill = truth_class), bins = 50, position = "identity", alpha = 0.5) +
+  geom_density(aes(x = value, fill = truth_class), position = "identity", alpha = 0.5) +
+  facet_wrap(~name, scales = "free", ncol = 3) +
+  labs(title = "Worm traits by dauer class: dauer n=112, non-dauer n=119") +
+  theme_bw() +
+  theme(plot.title = element_text(size=12))
+all_trait_hist
 
+cowplot::ggsave2(all_trait_hist, filename = "plots/all_trait_distributions_truth_class.png", width = 7.5, height = 7.5)
 
+#========================================+#
+# OK now classifier
+#=========================================#
+# make the classifier data
+dauer_classifier_df <- truth_join %>%
+  dplyr::select(plate, well, w_id, Class = truth_class, sd_int_gut:area_um) %>%
+  dplyr::select(-length, -width, -area) %>%
+  dplyr::filter(Class != "prune") %>%
+  dplyr::arrange(plate, well, w_id) %>%
+  dplyr::select(-plate, -well, -w_id)
 
-# # summarize
-# proc_df <- flag_rm %>%
-#   dplyr::group_by(Metadata_Plate, Metadata_Well) %>%
-#   dplyr::mutate(median_legnth = median(Worm_Length)) %>%
-#   dplyr::distinct(Metadata_Plate, Metadata_Well, .keep_all = T)
-# 
-# # lets just plot the integrated RFP intensity / area for NonOverlappingWorms
-# now_proc2 <- now2 %>%
-#   dplyr::select(assay = Metadata_Assay, date = Metadata_Date, plate = Metadata_Plate,
-#                 well = Metadata_Well, Parent_WormObjects, ObjectNumber, now_area = AreaShape_Area, 
-#                 AreaShape_Center_X, AreaShape_Center_Y, now_length = Worm_Length,
-#                 ii_RFP = Intensity_IntegratedIntensity_MaskedRFP,
-#                 Intensity_MaxIntensity_MaskedRFP,
-#                 Intensity_MeanIntensity_MaskedRFP,
-#                 Intensity_MedianIntensity_MaskedRFP,
-#                 Intensity_StdIntensity_MaskedRFP,
-#                 Intensity_MaxIntensity_MaskedRFP,
-#                 sd_int2 = Worm_StdIntensity_StraightenedImage_T1of1_L2of3,
-#                 mean_int2 = Worm_MeanIntensity_StraightenedImage_T1of1_L2of3) %>%
-#   dplyr::mutate(rescale_ii_RFP = ii_RFP * 65536,
-#                 cv_int = Intensity_StdIntensity_MaskedRFP/Intensity_MeanIntensity_MaskedRFP,
-#                 log_cv_int = log(cv_int),
-#                 cv_int2 = sd_int2/mean_int2,
-#                 log_cv_int2 = log(cv_int2))
-# 
-# # plot all the intensity traits - we could do PCA to find feeding worms?
-# # corrlation of eigen values with env parameters
-# trait_cor <- round(cor(dplyr::select_if(now_proc2, is.double), use = "complete.obs", method = "pearson"), 4)
-# trait_heatmap <- ggplotify::as.ggplot(pheatmap::pheatmap(trait_cor,
-#                                                          cutree_rows = NA,
-#                                                          cutree_cols = NA,
-#                                                          display_numbers = trait_cor))
-# trait_heatmap
-# 
-# cowplot::ggsave2(trait_heatmap, filename = "plots/all_measures_cor_heatmap.png", width = 12.5, height = 12.5)
-# 
-# # make a distribution for each trait
-# hist_df <- now_proc2 %>%
-#   tidyr::pivot_longer(cols = names(dplyr::select_if(now_proc2, is.double)))
-# 
-# # plot the histograms
-# all_trait_hist <- ggplot(hist_df) +
-#   geom_histogram(aes(x = value), bins = 100) +
-#   facet_wrap(~name, scales = "free", ncol = 4) +
-#   theme_bw()
-# all_trait_hist
-# 
-# log_cv_int_hist <- ggplot(hist_df %>% dplyr::filter(name == "log_cv_int" | name == "log_cv_int2")) +
-#   geom_histogram(aes(x = value), bins = 100) +
-#   theme_bw() +
-#   geom_vline(xintercept = -2.9, linetype = "dashed", color = "red") +
-#   facet_wrap(~name, scales = "free", ncol = 4)
-# log_cv_int_hist
-# 
-# cowplot::ggsave2(all_trait_hist, filename = "plots/all_measures_histogram.png", width = 7.5, height = 7.5)
-# cowplot::ggsave2(log_cv_int_hist, filename = "plots/log_cv_int_measures_histogram.png", width = 7.5, height = 7.5)
-# 
-# #===================================================================================#
-# # Try polarizing to feeding vs not feeding with log_cv_int
-# #===================================================================================#
-# now_proc3 <- now_proc2 %>%
-#   dplyr::mutate(fed = ifelse(log_cv_int2 > -2.9, T, F)) # could impirically find this line with azide treated then bead incubated worms?
-# 
-# # Read the rescaled RFP PNG
-# img <- png::readPNG(glue::glue("{getwd()}/CellProfiler/20220407_dauerProtocol1/output/20220414_run6/20220407-dauerProtocol1-p002-m2X_A01_w2_NonOverlappingWorms_RFP_mask.png"))
-# img2 <- png::readPNG(glue::glue("{getwd()}/CellProfiler/20220407_dauerProtocol1/output/20220414_run6/20220407-dauerProtocol1-p002-m2X_A01_w1_overlay.png"))
-# img3 <- png::readPNG(glue::glue("{getwd()}/CellProfiler/20220407_dauerProtocol1/output/20220414_run6/20220407-dauerProtocol1-p002-m2X_G07_w2_NonOverlappingWorms_RFP_mask.png"))
-# img4 <- png::readPNG(glue::glue("{getwd()}/CellProfiler/20220407_dauerProtocol1/output/20220414_run6/20220407-dauerProtocol1-p002-m2X_G07_w1_overlay.png"))
-# 
-# h<-dim(img)[1] # image height
-# w<-dim(img)[2] # image width
-# 
-# #plot rescaled RFP PNG with intensity traits from CP
-# well_img <- now_proc3 %>% dplyr::filter(well == "A01") %>%
-#   ggplot2::ggplot(.) +
-#   ggplot2::aes(x = AreaShape_Center_X, y = AreaShape_Center_Y, fill = log_cv_int2, shape = fed) +
-#   ggplot2::annotation_custom(grid::rasterGrob(img, width=ggplot2::unit(1,"npc"), height=ggplot2::unit(1,"npc")), 0, w, 0, -h) +
-#   ggplot2::scale_fill_viridis_c() +
-#   ggplot2::scale_shape_manual(values = c(21,24)) +
-#   ggplot2::geom_point(alpha = 0.75, size=4) +
-#   ggplot2::scale_x_continuous(expand=c(0,0),limits=c(0,w)) +
-#   ggplot2::scale_y_reverse(expand=c(0,0),limits=c(h,0)) +
-#   ggplot2::coord_equal() +
-#   ggplot2::theme_bw()
-# well_img
+# setup the training and testing observations
+set.seed(1)
+inTraining <- caret::createDataPartition(dauer_classifier_df$Class, p = .5, list = FALSE) # take 50% of data randomly
+training <- dauer_classifier_df[ inTraining,]
+testing  <- dauer_classifier_df[-inTraining,]
+
+# setup fit control for classifier
+fitControl <- caret::trainControl(## 10-fold CV
+  method = "repeatedcv",
+  number = 10,
+  ## repeated ten times
+  repeats = 10)
+
+# make a boosted tree model (sbm) with gbm package - no reason for this other than it's in the example
+gbmFit1 <- caret::train(Class ~ ., data = training, 
+                 method = "gbm", 
+                 trControl = fitControl,
+                 ## This last option is actually one
+                 ## for gbm() that passes through
+                 verbose = FALSE)
+gbmFit1
+
+# make a new tuning grid
+gbmGrid <-  expand.grid(interaction.depth = c(1, 2, 3), 
+                        n.trees = (1:20)*10, 
+                        shrinkage = 0.1,
+                        n.minobsinnode = 20)
+
+# make a new model with the new tuning grid
+set.seed(1)
+gbmFit2 <- train(Class ~ ., data = training, 
+                 method = "gbm", 
+                 trControl = fitControl, 
+                 verbose = FALSE, 
+                 ## Now specify the exact models 
+                 ## to evaluate:
+                 tuneGrid = gbmGrid)
+gbmFit2
+
+# see accuracy of models over tuning grid
+trellis.par.set(caretTheme())
+plot(gbmFit1)
+
+trellis.par.set(caretTheme())
+plot(gbmFit2)
+
+# predict on testing set
+predict(gbmFit2, newdata = testing, type = "prob")
+
+#=============================================#
+# caret example for classifier
+#============================================#
+# get data
+library(mlbench)
+data(Sonar)
+str(Sonar[, 1:10])
+# partition to training and testing
+library(caret)
+set.seed(998)
+inTraining <- caret::createDataPartition(Sonar$Class, p = .75, list = FALSE) # take 75% of data randomly
+training <- Sonar[ inTraining,]
+testing  <- Sonar[-inTraining,]
+# setup fit control
+fitControl <- caret::trainControl(## 10-fold CV
+  method = "repeatedcv",
+  number = 10,
+  ## repeated ten times
+  repeats = 10)
+
