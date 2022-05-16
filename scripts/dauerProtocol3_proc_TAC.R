@@ -248,23 +248,47 @@ acur_dauer_pred <- testing %>%
 
 table(acur_dauer_pred$well, acur_dauer_pred$agree)
 
-#=============================================#
-# caret example for classifier
-#============================================#
-# get data
-library(mlbench)
-data(Sonar)
-str(Sonar[, 1:10])
-# partition to training and testing
-library(caret)
-set.seed(998)
-inTraining <- caret::createDataPartition(Sonar$Class, p = .75, list = FALSE) # take 75% of data randomly
-training <- Sonar[ inTraining,]
-testing  <- Sonar[-inTraining,]
-# setup fit control
-fitControl <- caret::trainControl(## 10-fold CV
-  method = "repeatedcv",
-  number = 10,
-  ## repeated ten times
-  repeats = 10)
+# Use model to predict on full dauerProtocol3 assay
+dauer_pred <- predict(gbmFit2, newdata = dauer_df, type = "prob")
+dauer_pred_class <- predict(gbmFit2, newdata = dauer_df)
+acur_dauer_pred <- dauer_df %>%
+  dplyr::filter(cv_int_gut != "NaN") %>%
+  dplyr::bind_cols(dauer_pred, classifier_class = dauer_pred_class) %>%
+  dplyr::group_by(plate, well) %>%
+  dplyr::mutate(dauer_frac = sum(classifier_class == "dauer") / n())
 
+# plot well B03
+img <- png::readPNG(glue::glue("CellProfiler/20220427_dauerProtocol3/output/Analysis-20220505/20220427-dauerProtocol3-p001-m2X_B03_w1_overlay.png"))
+#img <- png::readPNG(glue::glue("CellProfiler/20220427_dauerProtocol3/output/Analysis-20220505/20220427-dauerProtocol3-p001-m2X_E07_w1_overlay.png"))
+
+h <- dim(img)[1] # image height
+w <- dim(img)[2] # image width
+well_radius = 825
+
+# make the plot for a well
+well_img <- acur_dauer_pred %>% dplyr::filter(well == 'B03', plate == "p001") %>%
+  ggplot2::ggplot(.) +
+  ggplot2::aes(x = x, y = y, label = as.character(w_id)) +
+  ggplot2::annotation_custom(grid::rasterGrob(img, width=ggplot2::unit(1,"npc"), height=ggplot2::unit(1,"npc")), 0, w, 0, -h) +
+  ggplot2::scale_fill_viridis_c() +
+  ggplot2::geom_text(size = 2, nudge_y = 15) +
+  ggplot2::geom_point(shape = 21, size = 1, alpha = 0.5, aes(color = classifier_class)) +
+  ggplot2::annotate("path", x = w/2 + well_radius * cos(seq(0, 2 * pi, length.out = 100)),
+                    y = h/2 + well_radius * sin(seq(0, 2 * pi, length.out = 100)),
+                    color = "red", 
+                    alpha = 0.25) +
+  ggplot2::scale_x_continuous(expand=c(0,0),limits=c(0,w)) +
+  ggplot2::scale_y_reverse(expand=c(0,0),limits=c(h,0)) +
+  ggplot2::coord_equal() +
+  ggplot2::theme_void() +
+  ggplot2::theme(legend.position = "right")
+well_img
+
+# save the plot
+cowplot::ggsave2(well_img, filename = glue::glue("CellProfiler/20220427_dauerProtocol3/output/Analysis-20220505/imageJ_overlays/20220427-dauerProtocol3-p001-m2X_B03_gbm_classifer_output.png"),
+                 dpi = 300, width = 6.827, height = 6.827) # set to 204
+#=================================================#
+# Plot dose response for 20 min feed only
+#=================================================#
+ggplot() +
+  
