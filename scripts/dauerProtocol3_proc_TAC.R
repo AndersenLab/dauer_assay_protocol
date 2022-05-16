@@ -235,7 +235,18 @@ trellis.par.set(caretTheme())
 plot(gbmFit2)
 
 # predict on testing set
-predict(gbmFit2, newdata = testing, type = "prob")
+dauer_testing_pred <- predict(gbmFit2, newdata = testing, type = "prob")
+dauer_testing_pred_class <- predict(gbmFit2, newdata = testing)
+
+# look at the accuracy of the testing set
+acur_dauer_pred <- testing %>%
+  dplyr::left_join(., truth_join %>% dplyr::filter(truth_class != "prune")) %>%
+  dplyr::bind_cols(dauer_testing_pred, classifier_class = dauer_testing_pred_class) %>%
+  dplyr::mutate(agree = ifelse(Class == as.character(classifier_class), 1, 0)) %>%
+  dplyr::group_by(well) %>%
+  dplyr::mutate(well_accuracy = sum(agree)/n())
+
+table(acur_dauer_pred$well, acur_dauer_pred$agree)
 
 #=============================================#
 # caret example for classifier
