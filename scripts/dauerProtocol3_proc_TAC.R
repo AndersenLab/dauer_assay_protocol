@@ -74,7 +74,7 @@ dauer_df <- flag_rm %>%
 m1 <- stats::lm(cbind(length_um, width_um, area_um) ~ ascr5_um + bead_time_min, data = dauer_df)
 summary(m1)
 car::Anova(m1)
-lh.1.out <- car::linearHypothesis(m1, hypothesis.matrix = c("bead_time_min = 0"))
+lh.1.out <- car::linearHypothesis(m1, hypothesis.matrix = c("bead_time_min = 0")) # look at other test statistics - not just Pillai
 lh.1.out
 # results suggest bead_time_min do not improve the model fit for size metrics
 
@@ -195,25 +195,22 @@ training <- dauer_classifier_df[ inTraining,]
 testing  <- dauer_classifier_df[-inTraining,]
 
 # setup fit control for classifier
-fitControl <- caret::trainControl(## 10-fold CV
-  method = "repeatedcv",
-  number = 10,
-  ## repeated ten times
-  repeats = 10)
+fitControl <- caret::trainControl(method = "repeatedcv", 
+                                  number = 10,  ## 10-fold CV
+                                  repeats = 10) ## repeated ten times
 
 # make a boosted tree model (sbm) with gbm package - no reason for this other than it's in the example
+# help understanding boosted tree models - https://towardsdatascience.com/a-visual-guide-to-gradient-boosted-trees-8d9ed578b33
 gbmFit1 <- caret::train(Class ~ ., data = training, 
                  method = "gbm", 
                  trControl = fitControl,
-                 ## This last option is actually one
-                 ## for gbm() that passes through
                  verbose = FALSE)
 gbmFit1
 
 # make a new tuning grid
-gbmGrid <-  expand.grid(interaction.depth = c(1, 2, 3), 
-                        n.trees = (1:20)*10, 
-                        shrinkage = 0.1,
+gbmGrid <-  expand.grid(interaction.depth = c(1, 2, 3), # max tree depth : allow up to five-way interactions
+                        n.trees = (1:50)*20, 
+                        shrinkage = 0.01, # learnign rate - reduce regression coeff to 0 for unstable regression coeffs - lower values avoid overfitting
                         n.minobsinnode = 20)
 
 # make a new model with the new tuning grid
@@ -231,12 +228,50 @@ gbmFit2
 trellis.par.set(caretTheme())
 plot(gbmFit1)
 
+# save this tuning
+png("plots/gbm2_model_tuning_grid.png", width=6, height=4, units="in", res=300)
 trellis.par.set(caretTheme())
 plot(gbmFit2)
+dev.off()
+
+# fit with restricted space
+gbmGrid2 <-  expand.grid(interaction.depth = c(1, 2), # max tree depth : allow up to five-way interactions
+                        n.trees = (1:50)*10, 
+                        shrinkage = 0.01, # learnign rate - reduce regression coeff to 0 for unstable regression coeffs - lower values avoid overfitting
+                        n.minobsinnode = 20)
+set.seed(1)
+
+gbmFit3 <- train(Class ~ ., data = training, 
+                 method = "gbm", 
+                 trControl = fitControl, 
+                 verbose = FALSE, 
+                 ## Now specify the exact models 
+                 ## to evaluate:
+                 tuneGrid = gbmGrid2)
+gbmFit3
+
+# save this tuning
+png("plots/gbm3_model_tuning_grid.png", width=6, height=4, units="in", res=300)
+trellis.par.set(caretTheme())
+plot(gbmFit3)
+dev.off()
+
+# see factor importance
+library(gbm)
+varimp2 <- caret::varImp(gbmFit2)
+varimp3 <- caret::varImp(gbmFit3)
+# save the plot
+png("plots/gbm2_var_importance.png", width=6, height=4, units="in", res=300)
+plot(varimp2, main="Variable Importance gbmfit2")
+dev.off()
+png("plots/gbm3_var_importance.png", width=6, height=4, units="in", res=300)
+plot(varimp3, main="Variable Importance gbmfit3")
+dev.off()
+
 
 # predict on testing set
-dauer_testing_pred <- predict(gbmFit2, newdata = testing, type = "prob")
-dauer_testing_pred_class <- predict(gbmFit2, newdata = testing)
+dauer_testing_pred <- predict(gbmFit3, newdata = testing, type = "prob")
+dauer_testing_pred_class <- predict(gbmFit3, newdata = testing)
 
 # look at the accuracy of the testing set
 acur_dauer_pred <- testing %>%
@@ -249,21 +284,28 @@ acur_dauer_pred <- testing %>%
 table(acur_dauer_pred$well, acur_dauer_pred$agree)
 
 # Use model to predict on full dauerProtocol3 assay
-dauer_pred <- predict(gbmFit2, newdata = dauer_df, type = "prob")
-dauer_pred_class <- predict(gbmFit2, newdata = dauer_df)
+dauer_pred <- predict(gbmFit3, newdata = dauer_df, type = "prob")
+dauer_pred_class <- predict(gbmFit3, newdata = dauer_df)
 acur_dauer_pred <- dauer_df %>%
   dplyr::filter(cv_int_gut != "NaN") %>%
   dplyr::bind_cols(dauer_pred, classifier_class = dauer_pred_class) %>%
   dplyr::group_by(plate, well) %>%
-  dplyr::mutate(dauer_frac = sum(classifier_class == "dauer") / n())
+  dplyr::mutate(dauer_frac = sum(classifier_class == "dauer") / n()) %>%
+  dplyr::group_by(ascr5_um, bead_time_min) %>%
+  dplyr::mutate(dauer_frac_cond = sum(classifier_class == "dauer") / n())
+
+test <- acur_dauer_pred %>%
+  dplyr::distinct(ascr5_um, bead_time_min, dauer_frac_cond) %>%
+  dplyr::arrange(bead_time_min, ascr5_um)
+test
 
 # plot well B03
 img <- png::readPNG(glue::glue("CellProfiler/20220427_dauerProtocol3/output/Analysis-20220505/20220427-dauerProtocol3-p001-m2X_B03_w1_overlay.png"))
-#img <- png::readPNG(glue::glue("CellProfiler/20220427_dauerProtocol3/output/Analysis-20220505/20220427-dauerProtocol3-p001-m2X_E07_w1_overlay.png"))
+img2 <- png::readPNG(glue::glue("CellProfiler/20220427_dauerProtocol3/output/Analysis-20220505/imageJ_overlays/20220427-dauerProtocol3-p001-m2X_B03_w1_8bit.png"))
 
 h <- dim(img)[1] # image height
 w <- dim(img)[2] # image width
-well_radius = 825
+well_radius = 825 
 
 # make the plot for a well
 well_img <- acur_dauer_pred %>% dplyr::filter(well == 'B03', plate == "p001") %>%
@@ -284,11 +326,41 @@ well_img <- acur_dauer_pred %>% dplyr::filter(well == 'B03', plate == "p001") %>
   ggplot2::theme(legend.position = "right")
 well_img
 
+well_img2 <- acur_dauer_pred %>% dplyr::filter(well == 'B03', plate == "p001") %>%
+  ggplot2::ggplot(.) +
+  ggplot2::aes(x = x, y = y, label = as.character(w_id)) +
+  ggplot2::annotation_custom(grid::rasterGrob(img2, width=ggplot2::unit(1,"npc"), height=ggplot2::unit(1,"npc")), 0, w, 0, -h) +
+  ggplot2::scale_fill_viridis_c() +
+  ggplot2::geom_text(size = 2, nudge_y = 15) +
+  ggplot2::geom_point(shape = 21, size = 1, alpha = 0.5, aes(color = classifier_class)) +
+  ggplot2::annotate("path", x = w/2 + well_radius * cos(seq(0, 2 * pi, length.out = 100)),
+                    y = h/2 + well_radius * sin(seq(0, 2 * pi, length.out = 100)),
+                    color = "red", 
+                    alpha = 0.25) +
+  ggplot2::scale_x_continuous(expand=c(0,0),limits=c(0,w)) +
+  ggplot2::scale_y_reverse(expand=c(0,0),limits=c(h,0)) +
+  ggplot2::coord_equal() +
+  ggplot2::theme_void() +
+  ggplot2::theme(legend.position = "right")
+well_img2
+
 # save the plot
 cowplot::ggsave2(well_img, filename = glue::glue("CellProfiler/20220427_dauerProtocol3/output/Analysis-20220505/imageJ_overlays/20220427-dauerProtocol3-p001-m2X_B03_gbm_classifer_output.png"),
                  dpi = 300, width = 6.827, height = 6.827) # set to 204
+cowplot::ggsave2(well_img2, filename = glue::glue("CellProfiler/20220427_dauerProtocol3/output/Analysis-20220505/imageJ_overlays/20220427-dauerProtocol3-p001-m2X_B03_gbm_classifer_output_no_overlay.png"),
+                 dpi = 300, width = 6.827, height = 6.827) # set to 204
+
 #=================================================#
 # Plot dose response for 20 min feed only
 #=================================================#
-ggplot() +
+pred_p1 <- ggplot2::ggplot(acur_dauer_pred %>%
+                  dplyr::filter(bead_time_min != 20) %>%
+                  dplyr::distinct(well, .keep_all = T)) +
+  ggplot2::aes(x = factor(ascr5_um, levels = c(0, 5, 10, 20)), y = dauer_frac) +
+  ggplot2::geom_boxplot(outlier.shape = NA) +
+  ggplot2::geom_jitter(width = 0.25) +
+  ggplot2::theme_bw() +
+  labs(x = "Concentration of ascr#5 (μM)", y = "Dauer fraction", title = "dauerProtocol3 20 min bead feed - gbm3 pred")
+
+cowplot::ggsave2(pred_p1, filename = "plots/dauerProtocol3_gbm3_pred_dauer_frac.png", width = 5, height = 5)
   
