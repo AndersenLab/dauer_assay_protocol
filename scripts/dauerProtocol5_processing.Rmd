@@ -1,11 +1,8 @@
 ---
-title: "dauerProtocol3_processingP2"
+title: "dauerProtocol5_processing"
 author: "Corinne Croslyn"
-date: "5/3/2022"
+date: '2022-05-23'
 output: html_document
-editor_options: 
-  markdown: 
-    wrap: 72
 ---
 
 ```{r setup, include=FALSE}
@@ -21,14 +18,12 @@ library(forcats)
 setwd(glue::glue("{dirname(rstudioapi::getActiveDocumentContext()$path)}/.."))
 ```
 
-Ok, using Daehan's data to train clustering for our own didn't work
-well. Let's try a different approach, using only our own data this time.
 
 ## Part 1: process sorter data
 
 ```{r}
 # Define a vector of your experiment directories. Can load more
-dirs <- c("data/raw/20220427_dauerProtocol3") 
+dirs <- c("data/raw/20220518_dauerAssay5") 
 
 # Read in the data using easysorter: https://github.com/AndersenLab/easysorter
 raw <- easysorter::read_data(dirs)
@@ -206,33 +201,3 @@ bp1b
 cowplot::ggsave2(bp1, filename = "plots/dauerAssay3/assay3_dauerF_boxplot1.png", width = 5, height = 10)
 cowplot::ggsave2(bp1b, filename = "plots/dauerAssay3/assay3_dauerF_boxplot2.png", width = 5, height = 10)
 ```
-
-## ascr#5 dose response (reaction norm)
-
-plot_ascr5_dose \<- df_dose25C_dauer %\>% dplyr::filter(condition ==
-"ascr5") %\>% ggplot(.) + aes(x = concentration, y = dauer_fraction,
-fill=strain, labs=strain) + geom_point(aes(fill=strain),
-position=position_jitterdodge(jitter.width = 0.1), alpha = .7, size =
-0.6) + geom_boxplot(outlier.alpha = 0, alpha = 0.7)+
-scale_fill_manual(values = c("gold2", "plum4", "darkorange1",
-"lightskyblue2")) + scale_y\_continuous(breaks=c(0, 0.2, 0.4, 0.6, 0.8,
-1.0))+ theme_bw() + theme(text = element_text(size=11, color = "black"),
-axis.title = element_text(size=13, color = "black"), axis.text =
-element_text(size=11, color = "black"), legend.title =
-element_text(size=11, color = "black"), legend.text =
-element_text(size=10, color = "black")) + labs(x="Concentration of
-ascr#5 (nM)", y="Dauer fraction", fill = "Strain")
-
-## assay regrssion
-
-resid_GWA_assay \<- GWA_dauer %\>% dplyr::group_by(round, condition)
-%\>% dplyr::mutate(resid_assay = residuals(lm(dauer_fraction \~ assay)))
-%\>% dplyr::ungroup() %\>% dplyr::group_by(condition, strain) %\>%
-dplyr::mutate(resid_mean = mean(resid_assay)) %\>% dplyr::ungroup() \##
-ANOVA test for 157 strains
-print(log10(anova(lm(resid_GWA_assay$resid_assay ~ resid_GWA_assay$strain))$"Pr(>F)"[1])) ## heritability df_H2 <- resid_GWA_assay %>%  dplyr::group_by(strain) %>%  dplyr::mutate(n=n()) %>%  dplyr::ungroup() %>%  dplyr::filter(n>=3) length(unique(df_H2$strain))
-df_GWA_pheno_a5 \<- df_H2 pheno \<-
-as.data.frame(dplyr::select(df_GWA_pheno_a5, resid_assay))[,1] strain
-\<-
-as.factor(df_GWA_pheno_a5$strain) reffMod <- lme4::lmer(pheno ~ 1 + (1|strain)) Variances <- as.data.frame(lme4::VarCorr(reffMod, comp = "Variance")) Vg <- Variances$vcov[1]
-Ve \<- Variances\$vcov[2] H2 \<- Vg/(Vg+Ve) print(H2) \## 0.836
