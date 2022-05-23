@@ -3,6 +3,9 @@ title: "dauerProtocol3_processingP2"
 author: "Corinne Croslyn"
 date: "5/3/2022"
 output: html_document
+editor_options: 
+  markdown: 
+    wrap: 72
 ---
 
 ```{r setup, include=FALSE}
@@ -18,9 +21,10 @@ library(forcats)
 setwd(glue::glue("{dirname(rstudioapi::getActiveDocumentContext()$path)}/.."))
 ```
 
-Ok, using Daehan's data to train clustering for our own didn't work well. Let's try a different approach, using only our own data this time.
+Ok, using Daehan's data to train clustering for our own didn't work
+well. Let's try a different approach, using only our own data this time.
 
-## Part 1: process sorter data 
+## Part 1: process sorter data
 
 ```{r}
 # Define a vector of your experiment directories. Can load more
@@ -46,33 +50,15 @@ score_proc$condition[score_proc$condition == "20min_5uMascr"] <- "20min 5 uM asc
 score_proc$condition[score_proc$condition == "20min_control"] <- "20min control"
 ```
 
-## Part 2: Using our controls to define clustering of our data 
+## Part 2: Using our controls to define clustering of our data
 
 ### Getting classes from our own (green) data
 
 ```{r}
-raw_dauers <- easysorter::read_data("data/raw/20220427_dauerProtocol3") 
-
-proc_dauers <- as.data.frame(raw_dauers[1]) %>%
-  dplyr::mutate(well = paste(plate,row,col, sep = "")) 
-
-#renaming categorical variables in our condition column
-proc_dauers$condition[proc_dauers$condition == "4hr_20uMascr"] <- "4hr 20 uM ascr#5"
-proc_dauers$condition[proc_dauers$condition == "4hr_10uMascr"] <- "4hr 10 uM ascr#5"
-proc_dauers$condition[proc_dauers$condition == "4hr_5uMascr"] <- "4hr 5 uM ascr#5"
-proc_dauers$condition[proc_dauers$condition == "4hr_control"] <- "4hr control"
-
-proc_dauers$condition[proc_dauers$condition == "20min_20uMascr"] <- "20min 20 uM ascr#5"
-proc_dauers$condition[proc_dauers$condition == "20min_10uMascr"] <- "20min 10 uM ascr#5"
-proc_dauers$condition[proc_dauers$condition == "20min_5uMascr"] <- "20min 5 uM ascr#5"
-proc_dauers$condition[proc_dauers$condition == "20min_control"] <- "20min control"
-
-
-# EM clustering in DI condition
-df_raw <- proc_dauers %>%
+# EM clustering
+df_raw <- score_proc %>%
   dplyr::filter(!is.na(strain)) %>%
-  #dplyr::filter(strain %in% c("JU346", "ECA1089", "ECA1119", "ECA1121", "NIC166", "ECA1091", "ECA1120", "ECA1122")) %>%
-  dplyr::filter(condition %in% c("4hr 5 uM ascr#5", "20min 5 uM ascr#5", "4hr 20 uM ascr#5", "20min 20 uM ascr#5")) %>%
+  dplyr::filter(condition %in% c("4hr control","4hr 20 uM ascr#5")) %>%
   dplyr::filter(TOF>100)
 
 df_green <- df_raw[c("TOF", "green", "EXT")]
@@ -81,19 +67,22 @@ green_merge_K4 <- data.frame(df_raw, ret.em_K4_green[6])
 
 # plot to define classes
 set.seed(5)
-ggplot(green_merge_K4) +
+raw_classes2 <- ggplot(green_merge_K4) +
   aes(x = TOF, y = green, scale = T, color = as.factor(class)) +
   geom_point(size=1, alpha = 0.3)+
   theme(text = element_text(size=12),
         axis.text.x = element_text(angle=45, hjust=1)) +
-  labs(title = "Dauer Assay 3 20uM + 5 uM (green)") +
+  labs(title = "Dauer Assay #3 Classifiers",
+       subtitle = "Using 4hr control + 20min control + 4hr 20 uM + 20min 20 uM") +
   theme_bw() + 
   ylim(0, 300) +
   xlim(0, 600)
+
+cowplot::ggsave2(raw_classes2, filename = "plots/dauerAssay3/raw_green_classes1.png", width =5, height = 5)
 ```
 
 ```{r}
-# Caution!!! factor label changes everytime!!!
+# Caution!!! factor label changes every time!!!
 green_merge_K4$class <- factor(green_merge_K4$class, levels=c(1,5,4,2,3), labels=c("dauer", "non-dauer1","non-dauer2", "other1", "other2"))
 
 green_merge_K4$class <- fct_collapse(green_merge_K4$class, dauer = c("dauer", "other1"), nondauer = c("non-dauer1", "non-dauer2"), other = c("other2"))
@@ -153,9 +142,10 @@ dauer_assay3_green
 cowplot::ggsave2(dauer_assay3_green, filename = "plots/dauerAssay3/dauer_assay3_clusters_by_condition_green.png", width = 10, height = 10)
 ```
 
-## Part 4: Quantifying dauers 
+## Part 4: Quantifying dauers
 
 ### Calculating the dauer fraction
+
 ```{r}
 #calculating the dauer fraction in each well
 da1_sum <- y_merge_K4_ours_g %>%
@@ -169,10 +159,21 @@ da1_sum <- y_merge_K4_ours_g %>%
 
 #calculating the average amount of worms in each well (should be ~50)
 mean(da1_sum$well_tot_n)
+
+#calculating the dauerfrac means for each condition
+dauerfrac_mean <- da1_sum %>%
+  dplyr::group_by(condition) %>%
+  dplyr::mutate(condition_mean = sum(class == "dauer")/n()) %>%
+  dplyr::distinct(condition, condition_mean)
 ```
-The average worm/well in this assay was ~32. This is low, but I think our pipetting improved after this. 
+The condition means clearly show a dose-dependent response!
+
+The average worm/well in this assay was ~32. This is low, but I think
+our pipetting improved after this. The high was 47, the low was 18; this
+is probably just an inconsistency in pipetting problem.
 
 ### Graphing
+
 ```{r, fig.height=15}
 # box plots
 bp1 <- ggplot(da1_sum %>% dplyr::distinct(well, .keep_all = T)) +
@@ -195,6 +196,7 @@ bp1b <- ggplot(da1_sum %>% dplyr::distinct(well, .keep_all = T)) +
   ylim(0, 1)+
   geom_point(aes(fill=condition), position=position_jitterdodge(), alpha = .7) +
   geom_boxplot(outlier.alpha = 0, alpha = 0.7) +
+  geom_text(data = aggregate(dauerFrac1~well, da1_sum, mean)) +
   theme_bw() + 
   facet_wrap(~condition, ncol = 2) +
   labs(y = "dauer fraction (d/(d+nond))", title = "Dauer Assay 3") +
@@ -204,3 +206,33 @@ bp1b
 cowplot::ggsave2(bp1, filename = "plots/dauerAssay3/assay3_dauerF_boxplot1.png", width = 5, height = 10)
 cowplot::ggsave2(bp1b, filename = "plots/dauerAssay3/assay3_dauerF_boxplot2.png", width = 5, height = 10)
 ```
+
+## ascr#5 dose response (reaction norm)
+
+plot_ascr5_dose \<- df_dose25C_dauer %\>% dplyr::filter(condition ==
+"ascr5") %\>% ggplot(.) + aes(x = concentration, y = dauer_fraction,
+fill=strain, labs=strain) + geom_point(aes(fill=strain),
+position=position_jitterdodge(jitter.width = 0.1), alpha = .7, size =
+0.6) + geom_boxplot(outlier.alpha = 0, alpha = 0.7)+
+scale_fill_manual(values = c("gold2", "plum4", "darkorange1",
+"lightskyblue2")) + scale_y\_continuous(breaks=c(0, 0.2, 0.4, 0.6, 0.8,
+1.0))+ theme_bw() + theme(text = element_text(size=11, color = "black"),
+axis.title = element_text(size=13, color = "black"), axis.text =
+element_text(size=11, color = "black"), legend.title =
+element_text(size=11, color = "black"), legend.text =
+element_text(size=10, color = "black")) + labs(x="Concentration of
+ascr#5 (nM)", y="Dauer fraction", fill = "Strain")
+
+## assay regrssion
+
+resid_GWA_assay \<- GWA_dauer %\>% dplyr::group_by(round, condition)
+%\>% dplyr::mutate(resid_assay = residuals(lm(dauer_fraction \~ assay)))
+%\>% dplyr::ungroup() %\>% dplyr::group_by(condition, strain) %\>%
+dplyr::mutate(resid_mean = mean(resid_assay)) %\>% dplyr::ungroup() \##
+ANOVA test for 157 strains
+print(log10(anova(lm(resid_GWA_assay$resid_assay ~ resid_GWA_assay$strain))$"Pr(>F)"[1])) ## heritability df_H2 <- resid_GWA_assay %>%  dplyr::group_by(strain) %>%  dplyr::mutate(n=n()) %>%  dplyr::ungroup() %>%  dplyr::filter(n>=3) length(unique(df_H2$strain))
+df_GWA_pheno_a5 \<- df_H2 pheno \<-
+as.data.frame(dplyr::select(df_GWA_pheno_a5, resid_assay))[,1] strain
+\<-
+as.factor(df_GWA_pheno_a5$strain) reffMod <- lme4::lmer(pheno ~ 1 + (1|strain)) Variances <- as.data.frame(lme4::VarCorr(reffMod, comp = "Variance")) Vg <- Variances$vcov[1]
+Ve \<- Variances\$vcov[2] H2 \<- Vg/(Vg+Ve) print(H2) \## 0.836
